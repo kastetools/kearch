@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-dmg:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Resolve version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Kearch.app
+        run: |
+          chmod +x build.sh icon/make-icons.sh
+          VERSION="${{ steps.version.outputs.version }}" BUILD="${{ github.run_number }}" ./build.sh
+
+      - name: Package DMG
+        run: |
+          mkdir -p dist
+          create-dmg \
+            --volname "kearch ${{ steps.version.outputs.version }}" \
+            --window-pos 200 120 \
+            --window-size 640 400 \
+            --icon-size 110 \
+            --icon "Kearch.app" 170 190 \
+            --hide-extension "Kearch.app" \
+            --app-drop-link 470 190 \
+            --no-internet-enable \
+            "dist/Kearch-${{ steps.version.outputs.version }}-arm64.dmg" \
+            "Kearch.app"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Kearch-${{ steps.version.outputs.version }}-arm64.dmg
+          generate_release_notes: true
+          body: |
+            ## 安装
+
+            1. 下载 `Kearch-${{ steps.version.outputs.version }}-arm64.dmg`,打开后把 **kearch** 拖到「应用程序」。
+            2. 首次启动 Gatekeeper 可能拦截未签名构建:右键 App 选 **打开**,或运行:
+               ```bash
+               xattr -dr com.apple.quarantine /Applications/Kearch.app
+               ```
+
+            仅支持 Apple Silicon (arm64)。
