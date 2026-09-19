@@ -7,7 +7,7 @@ import Carbon.HIToolbox
 @MainActor
 final class SearchWindowController {
     private let panel = SearchPanel()
-    private let width: CGFloat = 680
+    private var width: CGFloat = 680
 
     private var viewModel: SearchViewModel?
     private var localMonitor: Any?
@@ -40,10 +40,16 @@ final class SearchWindowController {
     // MARK: - 内容重建(全新状态)
 
     private func rebuildContent() {
+        let scale = SettingsStore.shared.panelScale
+        width = PanelMetrics.width(scale: scale)
+        let maxResultHeight = PanelMetrics.maxResultHeight(scale: scale)
+
         let vm = SearchViewModel()
         viewModel = vm
         let root = SearchRootView(
             viewModel: vm,
+            panelWidth: width,
+            maxResultHeight: maxResultHeight,
             onHeightChange: { [weak self] height in self?.updateHeight(height) }
         )
         panel.contentView = NSHostingView(rootView: root)

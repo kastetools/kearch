@@ -4,17 +4,17 @@ import Pow
 /// 面板内容:顶部搜索框 + 回车后向下展开的结果区。
 struct SearchRootView: View {
     @ObservedObject var viewModel: SearchViewModel
+    var panelWidth: CGFloat = 680
+    var maxResultHeight: CGFloat = 420
     var onHeightChange: (CGFloat) -> Void = { _ in }
 
     @FocusState private var focused: Bool
     @State private var resultContentHeight: CGFloat = 0
 
-    // 自动吸底:流式时始终贴底;用户手动上滚则暂停,滚回底部附近再恢复。
+    // 自动吸底:流式时贴底;用户一旦上滚即暂停,直到手动滚回真正底部才恢复。
     @State private var stickToBottom = true
     @State private var lastScrollOffset: CGFloat = 0
 
-    private let width: CGFloat = 680
-    private let maxResultHeight: CGFloat = 420
     private static let bottomAnchor = "kearch.result.bottom"
 
     var body: some View {
@@ -26,7 +26,7 @@ struct SearchRootView: View {
                     .transition(.movingParts.blur.combined(with: .opacity))
             }
         }
-        .frame(width: width)
+        .frame(width: panelWidth)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
@@ -144,16 +144,20 @@ struct SearchRootView: View {
         }
     }
 
-    /// 依据滚动偏移判断用户意图:上滚离开底部则暂停吸底,滚回底部附近则恢复。
+    /// 吸底意图判定:
+    /// - 用户**任何向上滚动**(offset 减小)即暂停吸底,方便查看/复制中间内容;
+    /// - 仅当滚回**真正的底部**(距底 ≤ 3pt)才恢复吸底。
+    /// 内容增长不会改变 offset(内容顶端不动),因此不会被误判为用户滚动。
     private func handleScroll(minY: CGFloat) {
         let viewport = min(max(resultContentHeight, 1), maxResultHeight)
         let offset = -minY // 顶部为 0,向下滚动增大
         let distanceFromBottom = max(0, resultContentHeight - viewport - offset)
-        if offset < lastScrollOffset - 1, distanceFromBottom > 16 {
-            stickToBottom = false
+
+        if offset < lastScrollOffset - 1 {
+            stickToBottom = false          // 用户上滚 → 停止吸底
         }
-        if distanceFromBottom <= 12 {
-            stickToBottom = true
+        if distanceFromBottom <= 3 {
+            stickToBottom = true           // 回到真正底部 → 恢复吸底
         }
         lastScrollOffset = offset
     }

@@ -15,6 +15,7 @@ final class SettingsStore {
         static let effort = "reasoningEffort"
         static let hotKeyEnabled = "hotKeyEnabled"
         static let systemPrompt = "systemPrompt"
+        static let panelScale = "panelScale"
     }
 
     private func nonEmpty(_ key: String) -> String? {
@@ -29,6 +30,11 @@ final class SettingsStore {
 
     /// 用户自定义系统提示词,每次请求都会附加(为空则不附加)。
     var systemPrompt: String { nonEmpty(Key.systemPrompt) ?? "" }
+
+    /// 面板尺寸(0–100),缩放唤起窗口的宽度与最大高度。默认 50。
+    var panelScale: Int {
+        defaults.object(forKey: Key.panelScale) == nil ? 50 : defaults.integer(forKey: Key.panelScale)
+    }
 
     var hotKeyEnabled: Bool {
         defaults.object(forKey: Key.hotKeyEnabled) == nil ? true : defaults.bool(forKey: Key.hotKeyEnabled)

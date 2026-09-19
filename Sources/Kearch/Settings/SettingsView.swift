@@ -89,9 +89,39 @@ private struct GeneralPane: View {
 
     @AppStorage(SettingsStore.Key.hotKeyEnabled) private var hotKeyEnabled = true
     @AppStorage(SettingsStore.Key.effort) private var effort = "low"
+    @AppStorage(SettingsStore.Key.panelScale) private var panelScale = 50
 
     var body: some View {
         Form {
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("面板尺寸")
+                        Spacer()
+                        Text("\(panelScale)")
+                            .foregroundStyle(.secondary).monospacedDigit()
+                    }
+                    Slider(
+                        value: Binding(
+                            get: { Double(panelScale) },
+                            set: { panelScale = Int($0.rounded()) }),
+                        in: 0...100, step: 1
+                    )
+                    HStack {
+                        Text("小").font(.caption2).foregroundStyle(.tertiary)
+                        Spacer()
+                        Text("宽 \(Int(PanelMetrics.width(scale: panelScale))) · 高 \(Int(PanelMetrics.maxResultHeight(scale: panelScale)))")
+                            .font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
+                        Spacer()
+                        Text("大").font(.caption2).foregroundStyle(.tertiary)
+                    }
+                }
+                Text("调节唤起窗口的宽度与结果区最大高度,下次唤起生效。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            } header: {
+                Label("外观", systemImage: "rectangle.expand.vertical")
+            }
+
             Section {
                 Toggle(isOn: $hotKeyEnabled) {
                     Text("启用全局快捷键 ⌥Space")
