@@ -267,6 +267,10 @@ private struct AboutPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 24)
+        .task {
+            // 打开「关于」时自动检查一次,避免手动点击的困惑。
+            if latest == nil { await check() }
+        }
     }
 
     @MainActor
@@ -278,10 +282,10 @@ private struct AboutPane: View {
             let info = try await UpdateChecker.fetchLatest()
             latest = info
             status = UpdateChecker.isNewer(info.version, than: currentVersion)
-                ? "发现新版本 v\(info.version)。"
-                : "✓ 已是最新版本。"
+                ? "发现新版本 v\(info.version)(当前 v\(currentVersion))"
+                : "✓ 已是最新版本(当前 v\(currentVersion),最新 v\(info.version))"
         } catch {
-            status = "失败:\(error.localizedDescription)"
+            status = "检查失败:\(error.localizedDescription)"
         }
     }
 

@@ -37,23 +37,6 @@ enum UpdateChecker {
         }
     }
 
-    // ETag 缓存:304 Not Modified 不计入匿名 60/小时 限流。
-    private static let etagKey = "updateChecker.etag"
-    private static let cachedReleaseKey = "updateChecker.cachedRelease"
-
-    private static func loadCachedRelease() -> ReleaseInfo? {
-        guard let data = UserDefaults.standard.data(forKey: cachedReleaseKey),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-        return parseRelease(from: json)
-    }
-
-    private static func saveCachedRelease(rawJSON: Data, etag: String?) {
-        UserDefaults.standard.set(rawJSON, forKey: cachedReleaseKey)
-        if let etag { UserDefaults.standard.set(etag, forKey: etagKey) }
-    }
-
     private static func parseRelease(from json: [String: Any]) -> ReleaseInfo? {
         guard let tagName = json["tag_name"] as? String,
               let htmlURLString = json["html_url"] as? String,
@@ -91,35 +74,32 @@ enum UpdateChecker {
         let url = URL(string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest")!
         var req = URLRequest(url: url)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        // GitHub API 要求带 User-Agent,缺失可能被判 403。
+        req.setValue("kearch-app", forHTTPHeaderField: "User-Agent")
+        req.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
+        // 每次都拉取最新:不做 ETag 条件请求、不返回旧缓存,避免把过期结果误判成「已是最新」。
         req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         req.timeoutInterval = 15
-        if let etag = UserDefaults.standard.string(forKey: etagKey) {
-            req.setValue(etag, forHTTPHeaderField: "If-None-Match")
-        }
 
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw UpdateError.malformedResponse }
 
-        if http.statusCode == 304, let cached = loadCachedRelease() {
-            return cached
-        }
-        if http.statusCode == 404 {
+        switch http.statusCode {
+        case 200:
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let release = parseRelease(from: json) else {
+                throw UpdateError.malformedResponse
+            }
+            return release
+        case 404:
             throw UpdateError.noReleaseYet
-        }
-        if http.statusCode == 403 || http.statusCode == 429 {
+        case 403, 429:
             let resetAt = (http.value(forHTTPHeaderField: "x-ratelimit-reset")).flatMap(TimeInterval.init)
                 .map { Date(timeIntervalSince1970: $0) }
-            if let cached = loadCachedRelease() { return cached }
             throw UpdateError.rateLimited(resetAt: resetAt)
+        default:
+            throw UpdateError.badStatus(http.statusCode)
         }
-        guard http.statusCode == 200 else { throw UpdateError.badStatus(http.statusCode) }
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let release = parseRelease(from: json) else {
-            throw UpdateError.malformedResponse
-        }
-        saveCachedRelease(rawJSON: data,
-                          etag: http.value(forHTTPHeaderField: "Etag") ?? http.value(forHTTPHeaderField: "ETag"))
-        return release
     }
 
     /// 下载 DMG,交给一个分离的 shell 脚本:等待本进程退出 → 覆盖 .app → 重启。
