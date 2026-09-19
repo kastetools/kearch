@@ -1,4 +1,5 @@
 import SwiftUI
+import Pow
 
 /// 面板内容:顶部搜索框 + 回车后向下展开的结果区。
 struct SearchRootView: View {
@@ -22,7 +23,7 @@ struct SearchRootView: View {
             if viewModel.isExpanded {
                 Divider().opacity(0.35)
                 resultArea
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(.movingParts.blur.combined(with: .opacity))
             }
         }
         .frame(width: width)
@@ -130,7 +131,7 @@ struct SearchRootView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.bottom, 8)
-                    .transition(.opacity.combined(with: .scale))
+                    .transition(.movingParts.pop(Color.accentColor))
                 }
             }
         }
@@ -192,7 +193,7 @@ struct SearchRootView: View {
             .padding(.vertical, 5)
             .background(Color.accentColor, in: Capsule())
             .padding(10)
-            .transition(.opacity.combined(with: .scale))
+            .transition(.movingParts.pop(Color.accentColor))
     }
 }
 

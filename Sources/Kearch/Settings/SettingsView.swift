@@ -268,7 +268,6 @@ private struct AboutPane: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 24)
         .task {
-            // 打开「关于」时自动检查一次,避免手动点击的困惑。
             if latest == nil { await check() }
         }
     }

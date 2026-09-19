@@ -1,7 +1,7 @@
 import Foundation
 import AppKit
 
-/// 通过 GitHub Releases 检查/安装更新(参考 kaste 实现)。
+/// 通过 GitHub Releases 检查/安装更新。
 /// 更新走 DMG:下载 → 挂载 → ditto 覆盖当前 .app → 重启。
 enum UpdateChecker {
     static let repoOwner = "kastetools"
@@ -70,6 +70,7 @@ enum UpdateChecker {
         return false
     }
 
+    /// 每次都拉取最新:不做 ETag 条件请求、不返回旧缓存,避免把过期结果误判成「已是最新」。
     static func fetchLatest() async throws -> ReleaseInfo {
         let url = URL(string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest")!
         var req = URLRequest(url: url)
@@ -77,7 +78,6 @@ enum UpdateChecker {
         // GitHub API 要求带 User-Agent,缺失可能被判 403。
         req.setValue("kearch-app", forHTTPHeaderField: "User-Agent")
         req.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-        // 每次都拉取最新:不做 ETag 条件请求、不返回旧缓存,避免把过期结果误判成「已是最新」。
         req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         req.timeoutInterval = 15
 
