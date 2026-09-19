@@ -53,7 +53,7 @@ struct SearchRootView: View {
                 .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            TextField("问点什么…", text: $viewModel.query)
+            TextField(viewModel.hasConversation ? "继续追问…" : "问点什么…", text: $viewModel.query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 22, weight: .regular))
                 .focused($focused)
@@ -61,24 +61,31 @@ struct SearchRootView: View {
 
             if viewModel.isBusy {
                 ProgressView().controlSize(.small)
-            } else if viewModel.commandDown && viewModel.canCopy {
-                copyHint
+            } else if viewModel.commandDown {
+                hints
             }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 15)
     }
 
-    private var copyHint: some View {
+    private var hints: some View {
+        HStack(spacing: 6) {
+            if viewModel.canCopy { hintPill("↩", "复制") }
+            if viewModel.hasConversation { hintPill("N", "新对话") }
+        }
+        .transition(.opacity)
+    }
+
+    private func hintPill(_ key: String, _ label: String) -> some View {
         HStack(spacing: 4) {
             Image(systemName: "command").font(.system(size: 10, weight: .semibold))
-            Text("↩ 复制").font(.system(size: 11, weight: .medium))
+            Text("\(key) \(label)").font(.system(size: 11, weight: .medium))
         }
         .foregroundStyle(.secondary)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .background(Color.primary.opacity(0.08), in: Capsule())
-        .transition(.opacity)
     }
 
     // MARK: - 结果区
@@ -153,28 +160,49 @@ struct SearchRootView: View {
 
     @ViewBuilder
     private var resultContent: some View {
-        switch viewModel.phase {
-        case .error(let message):
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Text(message)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(viewModel.turns) { turn in
+                turnView(turn)
             }
-        case .loading:
-            thinkingRow
-        default:
-            if !viewModel.displayText.isEmpty {
-                MarkdownView(text: viewModel.displayText)
-            } else if viewModel.isBusy {
+            if case .error(let message) = viewModel.phase {
+                errorRow(message)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func turnView(_ turn: ChatTurn) -> some View {
+        switch turn.role {
+        case .user:
+            HStack(spacing: 0) {
+                Spacer(minLength: 44)
+                Text(turn.text)
+                    .font(.system(size: 14))
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.accentColor.opacity(0.16),
+                                in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            }
+        case .assistant:
+            let clean = OutputSanitizer.clean(turn.text)
+            if clean.isEmpty {
                 thinkingRow
             } else {
-                Text("(无文本内容)")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                MarkdownView(text: clean)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
+
+    private func errorRow(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
         }
     }
 

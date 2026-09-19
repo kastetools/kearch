@@ -114,6 +114,9 @@ final class SearchWindowController {
             case kVK_Escape:
                 dismiss()
                 return nil
+            case kVK_ANSI_N where commandDown:
+                viewModel.newConversation()
+                return nil
             case kVK_Return, kVK_ANSI_KeypadEnter:
                 if commandDown {
                     viewModel.copyToClipboard()

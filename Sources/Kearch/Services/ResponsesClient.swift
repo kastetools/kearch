@@ -12,16 +12,22 @@ enum ClientError: Error {
     }
 }
 
+/// 对话中的一条消息(用于多轮上下文)。
+struct ChatMessage {
+    let role: String  // "user" / "assistant"
+    let text: String
+}
+
 /// OpenAI Responses API 流式客户端(对应 codex wire_api = "responses")。
 /// 以 SSE 逐行解析,产出文本增量。
 struct ResponsesClient {
     let config: AppConfig
 
-    func stream(prompt: String) -> AsyncThrowingStream<String, Error> {
+    func stream(messages: [ChatMessage]) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let request = try makeRequest(prompt: prompt)
+                    let request = try makeRequest(messages: messages)
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
 
                     guard let http = response as? HTTPURLResponse else {
@@ -64,7 +70,7 @@ struct ResponsesClient {
         }
     }
 
-    private func makeRequest(prompt: String) throws -> URLRequest {
+    private func makeRequest(messages: [ChatMessage]) throws -> URLRequest {
         var request = URLRequest(url: config.responsesURL)
         request.httpMethod = "POST"
         request.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
@@ -84,14 +90,22 @@ struct ResponsesClient {
             developerText += "\n\n" + config.systemPrompt
         }
 
+        // 构造多轮上下文:developer 系统消息 + 历史(user=input_text,assistant=output_text)。
+        var input: [[String: Any]] = [
+            ["role": "developer",
+             "content": [["type": "input_text", "text": developerText]]]
+        ]
+        for message in messages {
+            let contentType = message.role == "assistant" ? "output_text" : "input_text"
+            input.append([
+                "role": message.role,
+                "content": [["type": contentType, "text": message.text]]
+            ])
+        }
+
         let body: [String: Any] = [
             "model": config.model,
-            "input": [
-                ["role": "developer",
-                 "content": [["type": "input_text", "text": developerText]]],
-                ["role": "user",
-                 "content": [["type": "input_text", "text": prompt]]]
-            ],
+            "input": input,
             "stream": true,
             "store": false,
             "reasoning": ["effort": config.effort]
