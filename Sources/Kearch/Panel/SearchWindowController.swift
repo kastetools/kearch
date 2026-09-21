@@ -14,6 +14,9 @@ final class SearchWindowController {
     private var resignObserver: NSObjectProtocol?
     private var isVisible = false
 
+    /// 唤起前的前台 App,ESC 关闭时把焦点还给它,避免用户被迫用鼠标重新点击。
+    private var previousApp: NSRunningApplication?
+
     // MARK: - 显隐
 
     func toggle() {
@@ -21,6 +24,11 @@ final class SearchWindowController {
     }
 
     func show() {
+        // 记住之前的前台 App(排除 kearch 自己),供关闭时归还焦点。
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.bundleIdentifier != Bundle.main.bundleIdentifier {
+            previousApp = front
+        }
         rebuildContent()
         positionPanel()
         NSApp.activate(ignoringOtherApps: true)
@@ -29,12 +37,18 @@ final class SearchWindowController {
         installMonitors()
     }
 
-    func dismiss() {
+    /// - Parameter restoreFocus: 是否把焦点还给之前的前台 App。
+    ///   ESC / 主动切换关闭时为 true;失焦关闭时为 false(用户是主动点去别处,不该抢回)。
+    func dismiss(restoreFocus: Bool = true) {
         guard isVisible else { return }
         isVisible = false
         removeMonitors()
         viewModel?.cancel()
         panel.orderOut(nil)
+        if restoreFocus, let app = previousApp, !app.isTerminated {
+            app.activate()
+        }
+        previousApp = nil
     }
 
     // MARK: - 内容重建(全新状态)
@@ -90,7 +104,8 @@ final class SearchWindowController {
             object: panel,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.dismiss() }
+            // 失焦关闭:用户主动切去别的窗口,不抢回焦点。
+            MainActor.assumeIsolated { self?.dismiss(restoreFocus: false) }
         }
     }
 
