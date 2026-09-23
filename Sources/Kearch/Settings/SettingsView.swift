@@ -174,52 +174,226 @@ private struct GeneralPane: View {
 // MARK: - AI 接口
 
 private struct AIPane: View {
-    @AppStorage(SettingsStore.Key.baseURL) private var baseURL = ""
-    @AppStorage(SettingsStore.Key.model) private var model = ""
-    @AppStorage(SettingsStore.Key.apiKey) private var apiKey = ""
+    @StateObject private var profiles = ProfilesModel()
     @AppStorage(SettingsStore.Key.systemPrompt) private var systemPrompt = ""
+    @State private var editing: AIProfile?
 
     var body: some View {
         Form {
             Section {
-                TextField("Base URL", text: $baseURL, prompt: Text("https://…/openai"))
-                TextField("Model", text: $model, prompt: Text("gpt-5.5"))
-                SecureField("API Key", text: $apiKey, prompt: Text("留空使用 auth.json"))
+                Picker("当前使用", selection: $profiles.activeID) {
+                    Text("默认(本机 ~/.codex)").tag(ProfilesStore.defaultID)
+                    ForEach(profiles.profiles) { p in
+                        Text(p.name.isEmpty ? "未命名档案" : p.name).tag(p.id.uuidString)
+                    }
+                }
+                .onChange(of: profiles.activeID) { _, _ in profiles.persist() }
+
+                if profiles.activeID == ProfilesStore.defaultID {
+                    defaultInfo
+                }
             } header: {
-                Label("接口", systemImage: "network")
+                Label("配置档案", systemImage: "person.crop.rectangle.stack")
             } footer: {
-                Text("留空则读取 ~/.codex 配置(auth.json / config.toml)。")
+                Text("为不同 API Key / 服务分别建档,随时切换。默认档案读取本机 ~/.codex(auth.json / config.toml)。")
+            }
+
+            if !profiles.profiles.isEmpty {
+                Section("我的档案") {
+                    ForEach(profiles.profiles) { p in
+                        Button { editing = p } label: { profileRow(p) }
+                            .buttonStyle(.plain)
+                    }
+                }
             }
 
             Section {
-                ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color(nsColor: .textBackgroundColor))
-                    if systemPrompt.isEmpty {
-                        Text("例如:用中文简洁回答,先给结论再解释,不要寒暄。")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 11).padding(.vertical, 10)
-                            .allowsHitTesting(false)
-                    }
-                    TextEditor(text: $systemPrompt)
-                        .font(.system(size: 12))
-                        .scrollContentBackground(.hidden)
-                        .padding(6)
+                Button { editing = AIProfile(name: "新档案") } label: {
+                    Label("添加档案", systemImage: "plus.circle")
                 }
-                .frame(height: 112)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(Color.primary.opacity(0.1))
-                )
-                .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+            }
+
+            Section {
+                systemPromptEditor
             } header: {
                 Label("预设系统提示词", systemImage: "text.badge.plus")
             } footer: {
-                Text("每次请求附加在内置提示(注入本机时间、禁止工具调用)之后;留空则不附加。")
+                Text("对所有档案生效;每次请求附加在内置提示(注入本机时间、禁止工具调用)之后,留空则不附加。")
             }
         }
         .formStyle(.grouped)
+        .sheet(item: $editing) { profile in
+            ProfileEditor(
+                profile: profile,
+                isNew: !profiles.profiles.contains { $0.id == profile.id },
+                onSave: { saved in profiles.upsert(saved); editing = nil },
+                onDelete: { profiles.delete(profile); editing = nil },
+                onCancel: { editing = nil }
+            )
+        }
+    }
+
+    private func profileRow(_ p: AIProfile) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(p.name.isEmpty ? "未命名档案" : p.name).foregroundStyle(.primary)
+                Text(p.baseURL.isEmpty ? "—" : p.baseURL)
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            if profiles.activeID == p.id.uuidString {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(.tint)
+            }
+            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private var defaultInfo: some View {
+        let codex = CodexConfig.load()
+        LabeledContent("Endpoint") {
+            Text(codex?.baseURL ?? "未找到").foregroundStyle(.secondary).lineLimit(1)
+        }
+        LabeledContent("Model") {
+            Text(codex?.model ?? "gpt-5.5").foregroundStyle(.secondary)
+        }
+        LabeledContent("API Key") {
+            Text((codex?.apiKey?.isEmpty == false) ? "已读取 auth.json" : "未找到")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var systemPromptEditor: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(nsColor: .textBackgroundColor))
+            if systemPrompt.isEmpty {
+                Text("例如:用中文简洁回答,先给结论再解释,不要寒暄。")
+                    .font(.system(size: 12)).foregroundStyle(.tertiary)
+                    .padding(.horizontal, 11).padding(.vertical, 10)
+                    .allowsHitTesting(false)
+            }
+            TextEditor(text: $systemPrompt)
+                .font(.system(size: 12))
+                .scrollContentBackground(.hidden)
+                .padding(6)
+        }
+        .frame(height: 100)
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.primary.opacity(0.1)))
+        .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+    }
+}
+
+// MARK: - 档案模型 + 编辑器
+
+@MainActor
+private final class ProfilesModel: ObservableObject {
+    @Published var profiles: [AIProfile]
+    @Published var activeID: String
+
+    init() {
+        profiles = ProfilesStore.load()
+        activeID = ProfilesStore.activeID()
+    }
+
+    func persist() {
+        ProfilesStore.save(profiles)
+        ProfilesStore.setActiveID(activeID)
+    }
+
+    func upsert(_ p: AIProfile) {
+        if let i = profiles.firstIndex(where: { $0.id == p.id }) {
+            profiles[i] = p
+        } else {
+            profiles.append(p)
+        }
+        persist()
+    }
+
+    func delete(_ p: AIProfile) {
+        profiles.removeAll { $0.id == p.id }
+        if activeID == p.id.uuidString { activeID = ProfilesStore.defaultID }
+        persist()
+    }
+}
+
+private struct ProfileEditor: View {
+    @State var profile: AIProfile
+    let isNew: Bool
+    var onSave: (AIProfile) -> Void
+    var onDelete: () -> Void
+    var onCancel: () -> Void
+
+    @State private var testing = false
+    @State private var testResult: (ok: Bool, message: String)?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Form {
+                Section {
+                    TextField("名称", text: $profile.name, prompt: Text("例如:个人 Key / 工作 Key"))
+                } header: {
+                    Label(isNew ? "新建档案" : "编辑档案", systemImage: "person.crop.rectangle")
+                }
+
+                Section {
+                    TextField("Base URL", text: $profile.baseURL, prompt: Text("https://…/openai"))
+                    TextField("Model", text: $profile.model, prompt: Text("gpt-5.5"))
+                    SecureField("API Key", text: $profile.apiKey, prompt: Text("sk-… / cr-…"))
+                } header: {
+                    Label("接口", systemImage: "network")
+                }
+
+                Section {
+                    HStack(spacing: 10) {
+                        Button {
+                            Task { await runTest() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if testing { ProgressView().controlSize(.small) }
+                                Text(testing ? "测试中…" : "测试连接")
+                            }
+                        }
+                        .disabled(testing || profile.baseURL.isEmpty || profile.apiKey.isEmpty)
+
+                        if let result = testResult {
+                            Label(result.ok ? "连接成功" : result.message,
+                                  systemImage: result.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                                .font(.caption)
+                                .foregroundStyle(result.ok ? Color.green : Color.red)
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .formStyle(.grouped)
+
+            Divider()
+            HStack {
+                if !isNew {
+                    Button("删除", role: .destructive) { onDelete() }
+                }
+                Spacer()
+                Button("取消") { onCancel() }
+                Button("保存") { onSave(profile) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(profile.name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding(14)
+        }
+        .frame(width: 470, height: 400)
+    }
+
+    @MainActor
+    private func runTest() async {
+        testing = true
+        testResult = nil
+        defer { testing = false }
+        testResult = await ConnectionTester.test(baseURL: profile.baseURL,
+                                                 apiKey: profile.apiKey,
+                                                 model: profile.model)
     }
 }
 

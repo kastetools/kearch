@@ -9,9 +9,6 @@ final class SettingsStore {
     private init() {}
 
     enum Key {
-        static let baseURL = "baseURLOverride"
-        static let model = "modelOverride"
-        static let apiKey = "apiKeyOverride"
         static let effort = "reasoningEffort"
         static let hotKeyEnabled = "hotKeyEnabled"
         static let systemPrompt = "systemPrompt"
@@ -23,9 +20,6 @@ final class SettingsStore {
         return value
     }
 
-    var baseURLOverride: String? { nonEmpty(Key.baseURL) }
-    var modelOverride: String? { nonEmpty(Key.model) }
-    var apiKeyOverride: String? { nonEmpty(Key.apiKey) }
     var effort: String { nonEmpty(Key.effort) ?? "low" }
 
     /// 用户自定义系统提示词,每次请求都会附加(为空则不附加)。

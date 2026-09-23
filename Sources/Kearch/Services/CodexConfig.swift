@@ -16,17 +16,29 @@ struct AppConfig {
 
     static func resolve() throws -> AppConfig {
         let settings = SettingsStore.shared
-        let codex = CodexConfig.load()
-
-        let baseURL = settings.baseURLOverride ?? codex?.baseURL ?? ""
-        let apiKey = settings.apiKeyOverride ?? codex?.apiKey ?? ""
-        let model = settings.modelOverride ?? codex?.model ?? "gpt-5.5"
         let effort = settings.effort
+        let systemPrompt = settings.systemPrompt
 
+        // 非默认档案:直接用该档案的 endpoint/key/model。
+        let activeID = ProfilesStore.activeID()
+        if activeID != ProfilesStore.defaultID, let profile = ProfilesStore.profile(id: activeID) {
+            guard !profile.baseURL.isEmpty else { throw ConfigError.missingEndpoint }
+            guard !profile.apiKey.isEmpty else { throw ConfigError.missingKey }
+            return AppConfig(baseURL: profile.baseURL,
+                             apiKey: profile.apiKey,
+                             model: profile.model.isEmpty ? "gpt-5.5" : profile.model,
+                             effort: effort, systemPrompt: systemPrompt)
+        }
+
+        // 默认档案:读取本机 ~/.codex。
+        let codex = CodexConfig.load()
+        let baseURL = codex?.baseURL ?? ""
+        let apiKey = codex?.apiKey ?? ""
+        let model = codex?.model ?? "gpt-5.5"
         guard !baseURL.isEmpty else { throw ConfigError.missingEndpoint }
         guard !apiKey.isEmpty else { throw ConfigError.missingKey }
         return AppConfig(baseURL: baseURL, apiKey: apiKey, model: model,
-                         effort: effort, systemPrompt: settings.systemPrompt)
+                         effort: effort, systemPrompt: systemPrompt)
     }
 }
 
