@@ -144,22 +144,24 @@ struct SearchRootView: View {
         }
     }
 
-    /// 吸底意图判定:
-    /// - 用户**任何向上滚动**(offset 减小)即暂停吸底,方便查看/复制中间内容;
-    /// - 仅当滚回**真正的底部**(距底 ≤ 3pt)才恢复吸底。
-    /// 内容增长不会改变 offset(内容顶端不动),因此不会被误判为用户滚动。
+    /// 吸底意图判定(三态,互斥):
+    /// - 用户**任何向上滚动**(offset 减小)→ 停止吸底。**优先级最高**:即使此刻仍接近
+    ///   底部,也不在同一拍被重新开启,避免「上滚一点又被吸回」的反复横跳。
+    /// - 非上滚、且**滚到接近底部**(距底 ≤ 8pt)→ 恢复吸底,后续继续跟随最新输出。
+    /// - 其余情况保持当前状态(停在用户停的位置)。
+    /// 内容增长不改变 offset(内容顶端不动),因此不会被误判为用户滚动。
     private func handleScroll(minY: CGFloat) {
         let viewport = min(max(resultContentHeight, 1), maxResultHeight)
         let offset = -minY // 顶部为 0,向下滚动增大
         let distanceFromBottom = max(0, resultContentHeight - viewport - offset)
-
-        if offset < lastScrollOffset - 1 {
-            stickToBottom = false          // 用户上滚 → 停止吸底
-        }
-        if distanceFromBottom <= 3 {
-            stickToBottom = true           // 回到真正底部 → 恢复吸底
-        }
+        let scrolledUp = offset < lastScrollOffset - 1
         lastScrollOffset = offset
+
+        if scrolledUp {
+            stickToBottom = false
+        } else if distanceFromBottom <= 8 {
+            stickToBottom = true
+        }
     }
 
     @ViewBuilder
